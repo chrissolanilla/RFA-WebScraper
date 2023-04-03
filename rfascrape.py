@@ -1,6 +1,9 @@
 import requests
 import pandas as pd
 import cloudscraper
+import json 
+import csv 
+from bs4 import BeautifulSoup
 
 # Replace this list with the top 100 most popular zip codes in the US
 zip_codes = [11101, 33172, 79936,
@@ -18,7 +21,7 @@ zip_codes = [11101, 33172, 79936,
 11226,
 90805,
 91331,
-8701,
+8701,   
 90044,
 92336,
 926,
@@ -108,25 +111,42 @@ base_url = "https://rfaforlife.com/wp-json/physicians/v1/find/?lat=&lan=&procedu
 
 data = []
 
-scraper = cloudscraper.create_scraper()
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36'
+}
+scraper = cloudscraper.create_scraper(browser=headers)
 
 for zip_code in zip_codes:
     url = base_url.format(zip_code)
     response = scraper.get(url)
     if response.status_code == 200:
         json_data = response.json()
-        if 'message' not in json_data or json_data['message'] != 'Zip code not found':
-            for doctor in json_data['doctors']:
-                data.append({
-                    'Doctor Name': doctor['title'],
-                    'Address': doctor['address'],
-                    'Specialty': doctor['specialty'],
-                    'Institution': doctor['institution'],
-                    'Phone Number': doctor['contact'],
-                    'Zip Code': zip_code
-                })
+        html_content = json_data['data']
+        soup = BeautifulSoup(html_content, 'html.parser')
+        doctors_divs = soup.find_all('div', class_='finder-results__item')
+        if len(doctors_divs) > 0:
+            for doctor_div in doctors_divs:
+                doctor_info = {}
+                doctor_info['Doctor Name'] = doctor_div.find('h5', class_='title').text.strip()
+                info_list = doctor_div.find('div', class_='finder-results__information-list')
+
+                address = info_list.find_all('span')[1].text.strip().replace('\r\n', ', ')
+                doctor_info['Address'] = address
+
+                specialty = info_list.find_all('span')[3].text.strip()
+                doctor_info['Specialty'] = specialty
+
+                institution = info_list.find_all('span')[5].text.strip()
+                doctor_info['Institution'] = institution
+
+                contact = info_list.find_all('span')[7].text.strip()
+                doctor_info['Phone Number'] = contact
+
+                doctor_info['Zip Code'] = zip_code
+
+                data.append(doctor_info)
         else:
-            print(f"Zip code {zip_code} not found. Skipping.")
+            print(f"No doctors data found for zip code {zip_code}. Skipping.")
     else:
         print(f"Error fetching data for zip code {zip_code}. Skipping.")
 
